@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>My Music Cloud</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#000;color:#fff;font-family:Arial,Helvetica,sans-serif}
+button,input{font:inherit}.hidden{display:none!important}
+.app{min-height:100vh;background:linear-gradient(#202020,#121212 360px);padding-bottom:105px}
+header{height:72px;background:#080808;display:flex;align-items:center;justify-content:space-between;padding:0 28px;position:sticky;top:0;z-index:10}
+.logo{font-size:23px;font-weight:800}.logo span{color:#1ed760}
+.user{color:#bbb;font-size:14px}.container{max-width:1200px;margin:auto;padding:35px}
+.hero{display:flex;gap:25px;align-items:end;margin-bottom:30px}.art{width:180px;height:180px;border-radius:5px;background:linear-gradient(135deg,#1ed760,#075d2b);display:grid;place-items:center;font-size:70px;box-shadow:0 10px 30px #0008}
+h1{font-size:48px;margin:8px 0}.muted{color:#aaa}
+.actions{display:flex;gap:15px;align-items:center;margin-bottom:25px}
+.btn{border:0;border-radius:22px;padding:12px 20px;font-weight:800;cursor:pointer}.green{background:#1ed760;color:#000}.dark{background:#282828;color:#fff}.btn:hover{transform:scale(1.03)}
+.search{width:100%;max-width:360px;background:#242424;border:0;color:#fff;border-radius:22px;padding:12px 18px;outline:none}
+.drop{border:2px dashed #555;border-radius:10px;padding:30px;text-align:center;color:#aaa;margin-bottom:25px}.drop.drag{border-color:#1ed760;background:#102b19}
+.row{display:grid;grid-template-columns:45px 1fr 100px 80px;align-items:center;padding:10px 12px;border-radius:6px;cursor:pointer;gap:12px}.row:hover{background:#242424}.cover{width:42px;height:42px;background:#292929;display:grid;place-items:center;border-radius:3px}.info{min-width:0}.name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sub{color:#999;font-size:12px;margin-top:4px}.dur{color:#999;font-size:12px}.del{background:none;border:0;color:#888;cursor:pointer}.del:hover{color:#fff}
+.player{position:fixed;bottom:0;left:0;right:0;height:92px;background:#181818;border-top:1px solid #333;display:grid;grid-template-columns:280px 1fr 220px;gap:20px;align-items:center;padding:10px 20px;z-index:20}.now{display:flex;gap:12px;align-items:center;min-width:0}.nowcover{width:58px;height:58px;background:#292929;display:grid;place-items:center}.nowtitle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:bold}.controls{text-align:center}.controls button{background:none;border:0;color:#fff;cursor:pointer;font-size:18px;margin:0 9px}.play{background:#fff!important;color:#000!important;border-radius:50%;width:34px;height:34px}.progress{display:flex;align-items:center;gap:8px;color:#999;font-size:11px}.bar{height:4px;background:#555;border-radius:4px;flex:1;cursor:pointer}.fill{height:100%;background:#fff;width:0;border-radius:4px}.volume{width:110px;accent-color:#fff}
+.modal{position:fixed;inset:0;background:#000b;display:grid;place-items:center;z-index:50}.card{background:#181818;width:min(440px,92vw);padding:30px;border-radius:10px}.card h2{margin-top:0}.field{width:100%;padding:12px;margin:7px 0;background:#242424;border:1px solid #444;color:#fff;border-radius:5px}.notice{background:#252525;padding:12px;border-radius:6px;color:#bbb;font-size:13px;margin:12px 0}
+.toast{position:fixed;right:20px;bottom:110px;background:#fff;color:#000;padding:12px 16px;border-radius:6px;font-weight:bold;z-index:100}
+@media(max-width:800px){.container{padding:20px}.hero{align-items:center}.art{width:100px;height:100px;font-size:40px}h1{font-size:32px}.player{grid-template-columns:1fr 1fr;height:100px}.right{display:none}.row{grid-template-columns:35px 1fr 60px}.del{display:none}}
+</style>
+</head>
+<body>
+<div id="login" class="modal">
+  <div class="card">
+    <h2>♫ My Music Cloud</h2>
+    <p class="muted">Private music streaming from home to office.</p>
+    <input id="email" class="field" type="email" placeholder="Email">
+    <input id="password" class="field" type="password" placeholder="Password">
+    <button id="loginBtn" class="btn green" style="width:100%;margin-top:8px">Sign In</button>
+    <button id="signupBtn" class="btn dark" style="width:100%;margin-top:8px">Create Account</button>
+    <div id="loginMsg" class="notice">Configure your Supabase project in the setup section at the bottom of this file first.</div>
+  </div>
+</div>
+
+<div id="site" class="app hidden">
+<header><div class="logo">♫ <span>MY MUSIC</span></div><div><span id="userEmail" class="user"></span> &nbsp; <button id="logout" class="btn dark">Log out</button></div></header>
+<div class="container">
+<section class="hero"><div class="art">♫</div><div><div class="muted">PRIVATE CLOUD LIBRARY</div><h1>My Music</h1><p class="muted">Upload at home. Stream at the office.</p></div></section>
+<div class="actions"><label class="btn green" for="files">＋ Upload Music</label><input id="files" type="file" accept="audio/*" multiple hidden><input id="search" class="search" placeholder="Search your music..."></div>
+<div id="drop" class="drop">Drag & drop music files here, or click <b>Upload Music</b>.</div>
+<h2>Your Songs</h2><div id="songs"></div>
+</div>
+</div>
+
+<div class="player">
+<div class="now"><div class="nowcover">♫</div><div style="min-width:0"><div id="nowTitle" class="nowtitle">Nothing playing</div><div id="nowSub" class="sub">Choose a song</div></div></div>
+<div class="controls"><div><button id="prev">⏮</button><button id="play" class="play">▶</button><button id="next">⏭</button></div><div class="progress"><span id="cur">0:00</span><div id="bar" class="bar"><div id="fill" class="fill"></div></div><span id="total">0:00</span></div></div>
+<div class="right" style="text-align:right">🔊 <input id="volume" class="volume" type="range" min="0" max="1" step=".01" value=".8"></div>
+</div>
+<audio id="audio"></audio><div id="toast" class="toast hidden"></div>
+
+<script>
+/* ============================================================
+   SUPABASE SETUP
+   1. Create a Supabase project.
+   2. Create a Storage bucket named "music" and make it PRIVATE.
+   3. Create the SQL table/policies shown in the instructions below.
+   4. Paste your Project URL and anon/publishable key here.
+   ============================================================ */
+const SUPABASE_URL = "https://teftoxzhawtehgttbpvv.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_BnCiYzeudwCVlEqDxSqYNA_pqO2-n4M";
+
+const configured=!SUPABASE_URL.includes("PASTE_")&&!SUPABASE_ANON_KEY.includes("PASTE_");
+const sb=configured?window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON_KEY):null;
+let songs=[], index=-1;
+const audio=document.getElementById('audio');
+
+function fmt(s){if(!isFinite(s))return"0:00";return Math.floor(s/60)+":"+String(Math.floor(s%60)).padStart(2,"0")}
+function toast(t){let x=document.getElementById('toast');x.textContent=t;x.classList.remove('hidden');setTimeout(()=>x.classList.add('hidden'),2200)}
+function msg(t){document.getElementById('loginMsg').textContent=t}
+function safe(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]))}
+
+async function init(){
+  if(!configured){msg("Open this HTML file in a text editor and replace the two SUPABASE values in the setup section. Then reload.");return}
+  const {data:{session}}=await sb.auth.getSession();
+  if(session) showSite(session);
+  sb.auth.onAuthStateChange((_e,s)=>s?showSite(s):showLogin());
+}
+function showLogin(){document.getElementById('login').classList.remove('hidden');document.getElementById('site').classList.add('hidden')}
+async function showSite(session){document.getElementById('login').classList.add('hidden');document.getElementById('site').classList.remove('hidden');document.getElementById('userEmail').textContent=session.user.email||'';await loadSongs()}
+
+document.getElementById('loginBtn').onclick=async()=>{
+ if(!sb)return msg("Configure Supabase first.");
+ const email=document.getElementById('email').value.trim(),password=document.getElementById('password').value;
+ const {error}=await sb.auth.signInWithPassword({email,password});if(error)msg(error.message)
+};
+document.getElementById('signupBtn').onclick=async()=>{
+ if(!sb)return msg("Configure Supabase first.");
+ const email=document.getElementById('email').value.trim(),password=document.getElementById('password').value;
+ const {error}=await sb.auth.signUp({email,password});msg(error?error.message:"Account created. Check your email if confirmation is enabled.")
+};
+document.getElementById('logout').onclick=()=>sb.auth.signOut();
+
+async function loadSongs(){
+ const {data,error}=await sb.from('songs').select('*').order('created_at',{ascending:false});
+ if(error){toast(error.message);return} songs=data||[];render();
+}
+function render(){
+ const q=document.getElementById('search').value.toLowerCase();const box=document.getElementById('songs');box.innerHTML='';
+ const visible=songs.filter(s=>s.title.toLowerCase().includes(q));
+ if(!visible.length){box.innerHTML='<div class="drop">No songs found.</div>';return}
+ visible.forEach((s,n)=>{
+  const real=songs.indexOf(s),r=document.createElement('div');r.className='row';
+  r.innerHTML=`<div>${real===index&& !audio.paused?'♫':n+1}</div><div class="info"><div class="cover" style="float:left;margin-right:12px">♫</div><div class="name">${safe(s.title)}</div><div class="sub">${safe(s.artist||'Local upload')}</div></div><div class="dur">${s.duration?fmt(s.duration):'--:--'}</div><button class="del">✕</button>`;
+  r.onclick=e=>{if(!e.target.classList.contains('del'))play(real)};r.querySelector('.del').onclick=async e=>{e.stopPropagation();await removeSong(s)};box.appendChild(r);
+ });
+}
+async function upload(files){
+ const {data:{user}}=await sb.auth.getUser();if(!user)return;
+ for(const file of files){
+  if(!file.type.startsWith('audio/'))continue;
+  const id=crypto.randomUUID(),path=user.id+"/"+id+"_"+file.name.replace(/[^\w.\- ]/g,"_");
+  let duration=0;try{duration=await getDuration(file)}catch{}
+  toast("Uploading "+file.name+"…");
+  const up=await sb.storage.from('music').upload(path,file,{contentType:file.type,upsert:false});
+  if(up.error){toast(up.error.message);continue}
+  const ins=await sb.from('songs').insert({user_id:user.id,title:file.name.replace(/\.[^/.]+$/,''),artist:'Local upload',duration,storage_path:path});
+  if(ins.error){await sb.storage.from('music').remove([path]);toast(ins.error.message)}
+ }
+ await loadSongs();toast("Upload complete");
+}
+function getDuration(file){return new Promise((resolve,reject)=>{let a=document.createElement('audio');a.onloadedmetadata=()=>{URL.revokeObjectURL(a.src);resolve(a.duration)};a.onerror=reject;a.src=URL.createObjectURL(file)})}
+async function play(i){
+ const s=songs[i];if(!s)return;index=i;
+ const {data,error}=await sb.storage.from('music').createSignedUrl(s.storage_path,3600);
+ if(error){toast(error.message);return}
+ audio.src=data.signedUrl;audio.play();document.getElementById('nowTitle').textContent=s.title;document.getElementById('nowSub').textContent=s.artist||'Local upload';render();
+}
+async function removeSong(s){
+ if(!confirm("Delete "+s.title+" from your cloud library?"))return;
+ const a=await sb.storage.from('music').remove([s.storage_path]);if(a.error){toast(a.error.message);return}
+ const d=await sb.from('songs').delete().eq('id',s.id);if(d.error)toast(d.error.message);else{toast("Deleted");await loadSongs()}
+}
+function next(){if(songs.length)play((index+1)%songs.length)}function prev(){if(songs.length)play((index-1+songs.length)%songs.length)}
+document.getElementById('files').onchange=e=>upload(e.target.files);
+document.getElementById('search').oninput=render;
+const drop=document.getElementById('drop');drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag')};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');upload(e.dataTransfer.files)};
+document.getElementById('play').onclick=()=>{if(index<0&&songs.length)play(0);else audio.paused?audio.play():audio.pause()};
+document.getElementById('next').onclick=next;document.getElementById('prev').onclick=prev;
+audio.onplay=()=>{document.getElementById('play').textContent='❚❚';render()};audio.onpause=()=>{document.getElementById('play').textContent='▶';render()};
+audio.ontimeupdate=()=>{document.getElementById('cur').textContent=fmt(audio.currentTime);document.getElementById('fill').style.width=(audio.duration?audio.currentTime/audio.duration*100:0)+'%'};
+audio.onloadedmetadata=()=>document.getElementById('total').textContent=fmt(audio.duration);
+audio.onended=next;
+document.getElementById('bar').onclick=e=>{if(audio.duration)audio.currentTime=e.offsetX/e.currentTarget.clientWidth*audio.duration};
+document.getElementById('volume').oninput=e=>audio.volume=e.target.value;
+init();
+</script>
+</body>
+</html>
