@@ -364,7 +364,11 @@ function renderHome(){
   const al=albums(), hs=songs.slice(0,8);
   $("homeAlbums").innerHTML=al.slice(0,8).map((a,i)=>albumCard(a,i)).join("")||`<div class="empty">No albums yet. Upload some music.</div>`;
   $("quick").innerHTML=hs.slice(0,6).map((s)=>`<div class="quickItem" data-id="${s.id}">${coverHTML(s.cover_url,"quickCover")}<span>${safe(s.title)}</span></div>`).join("")||`<div class="empty">Upload your first song.</div>`;
-  $("quick").querySelectorAll("[data-id]").forEach(el=>el.onclick=()=>playById(el.dataset.id));
+  $("quick").querySelectorAll("[data-id]").forEach(el=>{
+    el.addEventListener('click', function() {
+      playById(el.dataset.id);
+    });
+  });
   $("homeSongs").innerHTML=songList(hs);
   bindSongRows($("homeSongs"));
 }
@@ -398,26 +402,29 @@ function songList(list){
   }).join("");
 }
 
-// Global event delegation for song rows - FIXED VERSION
-function bindSongRows(box){
-  // Remove old listeners by cloning (clean slate)
-  const newBox = box.cloneNode(true);
-  box.parentNode.replaceChild(newBox, box);
-  
-  // Add click listener to container
-  newBox.addEventListener('click', function(e) {
-    const row = e.target.closest('.songRow');
-    if (!row || !newBox.contains(row)) return;
-    
-    // Check if clicked on buttons
-    if (e.target.closest('.queueAdd') || e.target.closest('.more')) return;
-    
-    // Play the song
-    playById(row.dataset.song);
+// FIXED: Direct click handler for song rows
+function bindSongRows(container){
+  const rows = container.querySelectorAll('.songRow');
+  rows.forEach(row => {
+    row.addEventListener('click', function(e) {
+      // Ignore clicks on buttons
+      if (e.target.classList.contains('queueAdd') || e.target.classList.contains('more')) {
+        return;
+      }
+      
+      const songId = row.dataset.song;
+      const songIndex = songs.findIndex(s => s.id === songId);
+      
+      if (songIndex >= 0) {
+        // Stop current song and play the clicked one
+        play(songIndex);
+      }
+    });
   });
   
-  // Handle queue add buttons
-  newBox.querySelectorAll('.queueAdd').forEach(btn => {
+  // Queue add buttons
+  const queueBtns = container.querySelectorAll('.queueAdd');
+  queueBtns.forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
@@ -431,8 +438,9 @@ function bindSongRows(box){
     });
   });
   
-  // Handle more/options buttons
-  newBox.querySelectorAll('.more').forEach(btn => {
+  // More/options buttons
+  const moreBtns = container.querySelectorAll('.more');
+  moreBtns.forEach(btn => {
     btn.addEventListener('click', function(e) {
       e.preventDefault();
       e.stopPropagation();
@@ -446,8 +454,6 @@ function bindSongRows(box){
       else if (action === '3') removeSongFromAlbum(s);
     });
   });
-  
-  return newBox;
 }
 
 async function removeSongFromAlbum(s){
@@ -499,16 +505,46 @@ async function upload(files){
   await refreshAndRender();toast("Upload complete");
 }
 function getDuration(file){return new Promise((resolve,reject)=>{const a=document.createElement("audio");a.onloadedmetadata=()=>{URL.revokeObjectURL(a.src);resolve(a.duration)};a.onerror=reject;a.src=URL.createObjectURL(file)})}
-async function playById(id){const i=songs.findIndex(s=>s.id===id);if(i>=0)await play(i)}
-async function play(i){
-  const s=songs[i];if(!s)return;index=i;
-  const url=await signed(s.storage_path,3600);if(!url)return;
-  audio.src=url;
-  $("nowTitle").textContent=s.title;$("nowSub").textContent=(s.artist||"Unknown artist")+" • "+(s.album||"Singles");
-  if(s.cover_url){$("nowCover").outerHTML=`<img id="nowCover" class="nowCover" src="${s.cover_url}" alt="">`}else $("nowCover").outerHTML=`<div id="nowCover" class="nowCover">♫</div>`;
-  try{await audio.play()}catch{}
-  renderAll();
+
+// FIXED: Direct play function
+async function playById(id){
+  const i = songs.findIndex(s => s.id === id);
+  if (i >= 0) {
+    await play(i);
+  }
 }
+
+async function play(i){
+  const s = songs[i];
+  if (!s) return;
+  
+  index = i;
+  const url = await signed(s.storage_path, 3600);
+  if (!url) return;
+  
+  // Stop current playback
+  audio.pause();
+  audio.src = url;
+  
+  // Update UI immediately
+  $("nowTitle").textContent = s.title;
+  $("nowSub").textContent = (s.artist || "Unknown artist") + " • " + (s.album || "Singles");
+  if (s.cover_url) {
+    $("nowCover").outerHTML = `<img id="nowCover" class="nowCover" src="${s.cover_url}" alt="">`;
+  } else {
+    $("nowCover").outerHTML = `<div id="nowCover" class="nowCover">♫</div>`;
+  }
+  
+  // Play the song
+  try {
+    await audio.play();
+    renderAll();
+  } catch (err) {
+    console.error("Playback failed:", err);
+    toast("Click again to play");
+  }
+}
+
 function next(){
   if(queueIndex < queue.length){
     const s=queue[queueIndex++];
@@ -588,13 +624,14 @@ $("saveEdit").onclick=async()=>{
     if(up.error){toast(up.error.message);return}coverPath=path;
   }
   const upd=await sb.from("songs").update({title:$("editTitle").value.trim()||"Untitled",artist:$("editArtist").value.trim()||"Unknown artist",album:$("editAlbum").value.trim()||"Singles",cover_path:coverPath}).eq("id",editingSong.id);
-  if(upd.error){toast(upd.error.message);return}
+  if(upd.error){toast(error.message);return}
   $("editModal").classList.add("hidden");editingSong=null;await refreshAndRender();toast("Song updated");
 };
 function renderQueue(){
   const body=$("queueBody");
   if(!queue.length){body.innerHTML='<div class="queueEmpty">Your queue is empty.<br>Click ＋ beside a song to add it.</div>';return}
   body.innerHTML=queue.map((s,i)=>`<div class="queueRow" data-q="${i}">${coverHTML(s.cover_url,"queueCover")}<div class="queueInfo"><div class="queueTitle">${safe(s.title)}</div><div class="queueSub">${safe(s.artist||"Unknown artist")} • ${safe(s.album||"Singles")}</div></div><button class="queueRemove" data-idx="${i}">×</button></div>`).join("");
+  
   body.querySelectorAll(".queueRow").forEach(r=>{
     r.onclick=e=>{
       if(e.target.closest(".queueRemove"))return;
@@ -604,6 +641,7 @@ function renderQueue(){
       renderQueue();
     };
   });
+  
   body.querySelectorAll(".queueRemove").forEach(b=>{
     b.onclick=e=>{
       e.stopPropagation();
